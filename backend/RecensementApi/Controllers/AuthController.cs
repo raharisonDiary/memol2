@@ -1,10 +1,12 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using RecensementApi.Data;
-using RecensementApi.Models;
 using RecensementApi.DTOs;
-using System.Security.Cryptography;
-using System.Text;
+using RecensementApi.Models;
 
 namespace RecensementApi.Controllers
 {
@@ -12,76 +14,91 @@ namespace RecensementApi.Controllers
     [ApiController]
     public class AuthController : ControllerBase
     {
-        private readonly AppDbContext _context; 
+        private readonly AppDbContext _context;
+        private readonly IConfiguration _configuration;
 
-        public AuthController(AppDbContext context)
+        public AuthController(AppDbContext context, IConfiguration configuration)
         {
             _context = context;
+            _configuration = configuration;
         }
 
-        // 1. INSCRIPTION : POST: api/auth/register
+        // POST: api/auth/register
         [HttpPost("register")]
-        public async Task<IActionResult> Register(RegisterDto request)
+        public async Task<ActionResult<Utilisateur>> Register(RegisterDto dto)
         {
-            // Jerena aloha raha efa misy ny email
-            if (await _context.Utilisateurs.AnyAsync(u => u.Email == request.Email))
+            // Fanamarihana mampiasa u.Email
+            if (await _context.Utilisateurs.AnyAsync(u => u.Email == dto.Email))
             {
                 return BadRequest("Efa misy mampiasa io Email io.");
             }
 
-            // Hash-na ny password amin'ny alalan'ny BCrypt na SHA256 tsotra (eto ampiasaintsika SHA256)
-            using var sha256 = SHA256.Create();
-            var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(request.Password));
-            var passwordHash = Convert.ToBase64String(hashedBytes);
+            // Hashing ny password mampiasa BCrypt
+            string passwordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
 
-            var utilisateur = new Utilisateur
+            var mpampiasa = new Utilisateur
             {
-                Nom = request.Nom,
-                Email = request.Email,
+                Nom = dto.Nom,
+                Email = dto.Email,
                 PasswordHash = passwordHash,
-                Role = request.Role,
-                RegionAffectation = request.RegionAffectation,
-                DateCreation = DateTime.UtcNow
+                Role = dto.Role,
+                RegionAffectation = dto.RegionAffectation
             };
 
-            _context.Utilisateurs.Add(utilisateur);
+            _context.Utilisateurs.Add(mpampiasa);
             await _context.SaveChangesAsync();
 
-            return Ok(new { message = "Voasoratra soa aman-tsara ny mpampiasa vaovao!" });
+            return Ok(new { message = "Voasoratra anarana soa aman-tsara!" });
         }
 
-        // 2. CONNEXION : POST: api/auth/login
+        // POST: api/auth/login
         [HttpPost("login")]
-        public async Task<IActionResult> Login(LoginDto request)
+        public async Task<IActionResult> Login(LoginDto dto)
         {
-            var utilisateur = await _context.Utilisateurs.FirstOrDefaultAsync(u => u.Email == request.Email);
-            
-            if (utilisateur == null)
+            // Fitadiavana ny mpampiasa amin'ny alalan'ny Email
+            var mpampiasa = await _context.Utilisateurs.FirstOrDefaultAsync(u => u.Email == dto.Email);
+
+            if (mpampiasa == null || !BCrypt.Net.BCrypt.Verify(dto.Password, mpampiasa.PasswordHash))
             {
-                return BadRequest("Tsy misy io mpampiasa io na diso ny email.");
+                return Unauthorized("Diso ny Email na ny Password.");
             }
 
-            // Jerena raha mifanaraka ny password hash
-            using var sha256 = SHA256.Create();
-            var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(request.Password));
-            var inputHash = Convert.ToBase64String(hashedBytes);
+            // Famoronana Token JWT
+            var token = GenerateJwtToken(mpampiasa);
 
-            if (utilisateur.PasswordHash != inputHash)
-            {
-                return BadRequest("Diso ny teny miafina (Password).");
-            }
-
-            // Eto aloha dia averintsika tsotra ny mombamomba azy. 
-            // Rehefa mametraka JWT Token isika dia hovana eto.
             return Ok(new
             {
-                message = "Tafiditra ianao!",
-                id = utilisateur.Id,
-                nom = utilisateur.Nom,
-                email = utilisateur.Email,
-                role = utilisateur.Role,
-                region = utilisateur.RegionAffectation
+                Token = token,
+                Nom = mpampiasa.Nom,
+                Role = mpampiasa.Role,
+                RegionAffectation = mpampiasa.RegionAffectation
             });
+        }
+
+        private string GenerateJwtToken(Utilisateur user)
+        {
+            var jwtSettings = _configuration.GetSection("Jwt");
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]));
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+            // Tehirizina ao anatin'ny Token ny mombamomba azy
+            var claims = new[]
+            {
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new Claim(ClaimTypes.Email, user.Email),
+                new Claim(ClaimTypes.Role, user.Role),
+                new Claim("RegionAffectation", user.RegionAffectation ?? "")
+            };
+
+            var token = new JwtSecurityToken(
+                issuer: jwtSettings["Issuer"],
+                audience: jwtSettings["Audience"],
+                claims: claims,
+                expires: DateTime.Now.AddDays(1), // Manankery 1 andro
+                signingCredentials: creds
+            );
+
+            return new JwtSecurityTokenHandler().WriteToken(token);
         }
     }
 }

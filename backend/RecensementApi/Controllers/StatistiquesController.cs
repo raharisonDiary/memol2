@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using RecensementApi.Data;
 using RecensementApi.DTOs;
@@ -7,6 +8,7 @@ namespace RecensementApi.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class StatistiquesController : ControllerBase
     {
         private readonly AppDbContext _context;

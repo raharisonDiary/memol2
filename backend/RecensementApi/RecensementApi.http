@@ -1,0 +1,6 @@
+@RecensementApi_HostAddress = http://localhost:5193
+
+GET {{RecensementApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

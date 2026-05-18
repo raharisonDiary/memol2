@@ -1,0 +1,34 @@
+## Visual Studio Core
+.vscode/
+*.code-workspace
+
+## User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+## Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Re]leasePublic/
+x64/
+x86/
+build/
+bld/
+[Bb]in/
+[Oo]bj/
+generated/
+
+## Publish output
+publish/
+
+## .NET Core
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## App settings files containing sensitive secrets (Fiarovana ny Connection String-nao)
+appsettings.Development.json
